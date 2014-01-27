@@ -1,0 +1,13 @@
+#subset: the function returns if each element of the first set is a member of the second set recursively.
+
+#proper_subset: using subset to determine whether two sets are equal. If not, return subset
+
+#equal_sets: using subset to determine if each of the two sets is a subset of the other
+
+#set_diff: check if each element in set a is a member of set b. If yes,return this element and check the rest elements; if not, check the rest   
+
+#computed_fixed_point: if eq f(x) x, return x; otherwise check eq f(f(x)) x, etc., stooping when such a point is found
+
+#computed_periodic_point: consisting of three functions. Compose is for composing two functions; power is for calculating nth power of a function; then if eq ((power f p)(x)) x, then return x; otherwise check eq ((power f p)(f(x)) f(x),etc., stopping when such a point is found
+
+#filter_blind_alleys: this problem is done using 6 other functions. Function filter returns a list which contains each terminal and some nonterminals but with certain ways of expanding, they can also reach terminals. Say the rule is of the format (a,[c d;e f]). First it checks whether c and e are terminals. If neither of them is a “T”, check d or f (depends on which of c and e is a nonterminal) is in the terminal list. If they are in the list, check if a is in the list. If yes, continue check next rule; if not, put a in the list and check next rule. When all the rules are checked, do if from the top again. Here I used the concept of fixed point, where if after several times of “filter” the resulting lists are the same, it can stop just like the way it stops in function computed_fixed_point. The function set_order is to retrieve all the rules that are either terminals or nonterminals whose leaves are terminals, with regarding to the list got from function filter. The possible ways to improve this is to use some built functions in List module, which can save a lot of syntax and space.
