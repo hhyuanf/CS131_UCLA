@@ -6,7 +6,7 @@ let rec fun_gen rule_list result non_terminal =
 match rule_list with
 [] -> result
 |(a::b) -> match a with
-(c,d) -> if c == non_terminal then fun_gen b (result@[d]) non_terminal
+(c,d) -> if c = non_terminal then fun_gen b (result@[d]) non_terminal
 else fun_gen b result non_terminal
 
 let convert_grammar gram1 = 
