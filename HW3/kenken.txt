@@ -1,0 +1,15 @@
+For hw3, I implemented kenken/3 and plain_kenken/3 using GNU Prolog, and both of them successfully passed all the test cases given on the website. I also called statistics/0 for measuring performance difference between these two different implementation. For example, using the test case
+kenken(
+  4,
+  [
+   +(6, [1-1, 1-2, 2-1]),
+   *(96, [1-3, 1-4, 2-2, 2-3, 2-4]),
+   -(1, 3-1, 3-2),
+   -(1, 4-1, 4-2),
+   +(8, [3-3, 4-3, 4-4]),
+   *(2, [3-4])
+  ],
+  T
+), write(T), nl, fail. 
+
+It showed the time for computing each result, and the total time is 2ms. While for the same test, call plain_kenken would take a longer time to get all the results. I tested 10 times, and it roughly took 2200ms. Their output are in the same order as given in the example. 
