@@ -10,7 +10,7 @@ class UnSynchronizedState implements State {
 	if (value[i] <= 0) {
 	    return false;
 	}
-	value[i]--;
+	value[i]++;
 	value[j]++;
 	return true;
     }

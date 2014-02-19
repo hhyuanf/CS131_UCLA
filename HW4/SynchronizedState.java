@@ -12,7 +12,7 @@ class SynchronizedState implements State {
 	    return false;
 	}
 	//value[i]--;
-	value[i]--;
+	value[i]++;
 	value[j]++;
 	return true;
     }
