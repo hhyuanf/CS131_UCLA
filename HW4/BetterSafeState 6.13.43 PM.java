@@ -18,7 +18,7 @@ class BetterSafeState implements State {
         lock.lock();
         try {
             //value[i]--;
-            value[i]++;
+            value[i]--;
             value[j]++;
         }
         finally{

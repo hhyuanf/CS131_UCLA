@@ -13,11 +13,11 @@ class BetterSorryState implements State {
 	if (i > j){
 		value[j]++;
 	//value[i]--;
-		value[i]++;
+		value[i]--;
 	}
 	else{
 			//value[i]--;
-		value[i]++;
+		value[i]--;
 		value[j]++;
 	}
 	return true;

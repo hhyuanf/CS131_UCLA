@@ -23,12 +23,12 @@ class GetNSetState implements State {
             value.set(j, ++v1);
             int v2 = value.get(i);
             //value.set(i, --v2);
-            value.set(i, ++v2);
+            value.set(i, --v2);
         }
         else {
             int v1 = value.get(i);
             //value.set(i, --v1);
-            value.set(i, ++v1);
+            value.set(i, --v1);
             int v2 = value.get(j);
             value.set(j, ++v2);
         }
