@@ -1,0 +1,3 @@
+I use continue as the break point, when backtrack, it gives the position where the program can continue, and works just like acceptor. Since the matcher should always return suffix plus backtracker, cons frag (lambda() continue …) should work.
+
+I failed two testcases. For the last one, mainly I think the reason why it failed is because it cannot go through all possibilities. It returns fails somewhere during backtrack and cannot continue on another way. This case is so complicated that I’m not able to think through what happened. But for the case (eq? (first-match matcher4 frag2) frag2), it gives #f is because it didn’t match the empty fragment first. I tried to fix this problem, but it seems that I failed.
