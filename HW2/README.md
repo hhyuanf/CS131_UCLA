@@ -1,54 +1,226 @@
-Java shared memory performance races
+Naive parsing of context free grammars
 ==========
 
-Background
+Theoretical background
 
-You're working for a startup company Ginormous Data Inc. (GDI) that specializes in finding patterns in large amounts of data. For example, a big retailer might give GDI all the web visits and purchases made and all the credit reports they've inspected and records of all the phone calls to them, and GDI will then find patterns in the data that suggest which toys will be hot this Christmas season. The programs that GDI writes are mostly written in Java. They aren't perfect; they're just heuristics, and they're operating on incomplete and sometimes-inaccurate information. They do need to be fast, though, as your clients are trying to find patterns faster than their competition can, and are willing to put up with a few errors even if the results aren't perfect, so long as they get good-enough results quickly.
+A derivation is a rule list that describes how to derive a phrase from a nonterminal symbol. For example, suppose we have the following grammar with start symbol Expr:
 
-The problem
+Expr → Term Binop Expr
+Expr → Term
+Term → Num
+Term → Lvalue
+Term → Incrop Lvalue
+Term → Lvalue Incrop
+Term → "(" Expr ")"
+Lvalue → $ Expr
+Incrop → "++"
+Incrop → "−−"
+Binop → "+"
+Binop → "−"
+Num → "0"
+Num → "1"
+Num → "2"
+Num → "3"
+Num → "4"
+Num → "5"
+Num → "6"
+Num → "7"
+Num → "8"
+Num → "9"
+Then here is a derivation for the phrase "3" "+" "4" from the nonterminal Expr. After each rule is applied, the resulting list of terminals and nonterminals is given.
 
-GDI regularly uses multithreading to speed up its applications, and many of GDI's programs operate on shared-memory representations of the state of a simulation. These states are updated safely, using Java's synchronized keyword, and this is known to be a bottleneck in the code. Your boss asks you what will happen if you remove the synchronized keyword. You reply, "It'll break the simulations." She responds, "So what? If it's just a small amount of breakage, that might be good enough. Or maybe you can substitute some other synchronization strategy that's less heavyweight, and that'll be good enough." She suggests that you look into this by measuring how often GDI's programs are likely to break if they switch to inadequate-but-faster synchronization methods.
+rule	after rule is applied
+(at start)	Expr
+Expr → Term Binop Expr	Term Binop Expr
+Term → Num	Num Binop Expr
+Num → "3"	"3" Binop Expr
+Binop → "+"	"3" "+" Expr
+Expr → Term	"3" "+" Term
+Term → Num	"3" "+" Num
+Num → "4"	"3" "+" "4"
+In a leftmost derivation, the leftmost nonterminal is always the one that is expanded next. The above example is a leftmost derivation.
 
-In some sense this assignment is the reverse of what software engineers traditionally do with multithreaded applications. Traditionally, they are worried about race conditions and insert enough synchronization so that the races become impossible. Here, though, you're deliberately trying to add races to the code in order to speed it up, and want to measure whether (and ideally, how badly) things will break if you do.
+Motivation
 
-The Java memory model
+You'd like to test grammars that are being proposed as test cases for CS 132 projects. One way is to test it on actual CS 132 projects, but those projects aren't done yet and anyway you'd like a second opinion in case the student projects are incorrect. So you decide to write a simple parser generator. Given a grammar in the style of Homework 1, your program will generate a function that is a parser. When this parser is given a program to parse, it produces a derivation for that program, or an error indication if the program contains a syntax error and cannot be parsed.
 
-Java synchronization is based on the Java memory model (JMM), which defines how an application can safely avoid data races when accessing shared memory. The JMM lets Java implementations optimize accesses by allowing more behaviors than the intuitive semantics where there is a global clock and actions by threads interleave in a schedule that assumes sequential consistency. On modern hardware, these intuitive semantics are often incorrect: for example, intraprocessor cache communication might be faster than memory, which means that a cached read can return a new value on one processor before an uncached read returns an old value on another. To allow this kind of optimization, first, the JMM says that two accesses to the same location conflict if they come from different threads, at least one is a write, and the location is not declared to be volatile; and second, the JMM says that behavior is well-defined to be data-race free (DRF) unless two conflicting accesses occur without synchronization in between.
+The key notion of this assignment is that of a matcher. A matcher is a function that inspects a given string of terminals to find a match for a prefix that corresponds to a nonterminal symbol of a grammar, and then checks whether the match is acceptable by testing whether a given acceptor succeeds on the corresponding derivation and suffix. For example, a matcher for awkish_grammar below might inspect the string ["3";"+";"4";"-"] and find two possible prefixes that match, namely ["3";"+";"4"] and ["3"]. The matcher will first apply the acceptor to a derivation for the first prefix ["3";"+";"4"], along with the corresponding suffix ["-"]. If this is accepted, the matcher will return whatever the acceptor returns. Otherwise, the matcher will apply the acceptor to a derivation for the second prefix ["3"], along with the corresponding suffix ["+";"4";"-"], and will return whatever the acceptor returns. If a matcher finds no matching prefixes, it returns the special value None.
 
-The details for proving that a program is DRF can be tricky, as is optimizing a Java implementation with data-race freedom in mind. Not only have serious memory-synchronization bugs been found in Java implementations, occasionally bugs have been found in the JMM itself, and sometimes people have even announced bugs only to find out later that they weren't bugs after all. For more details about this, please see: Lochbihler A. Making the Java memory model safe [PDF]. ACM TOPLAS 2013 Dec;35(4):12. doi:10.1145/2518191. You needn't read all this paper, just the first eight pages or so—through the end of §1.1.3.
+As you can see by mentally executing the example, matchers sometimes need to try multiple alternatives and to backtrack to a later alternative if an earlier one is a blind alley.
 
-How to break the JMM's rules
+An acceptor is a function that accepts a rule list and a suffix by returning some value wrapped inside the Some constructor. The acceptor rejects the rule list and suffix by returning None. For example, the acceptor (fun d -> function | "+"::t -> Some (d,"+"::t) | _ -> None) accepts any rule list but accepts only suffixes beginning with "+". Such an acceptor would cause the example matcher to fail on the prefix ["3";"+";"4"] (since the corresponding suffix begins with "-", not "+") but it would succeed on the prefix ["3"].
 
-It's easy to write programs that violate the JMM's rules. To model this, you will use a simple prototype that manages a data structure that represents an array of nonnegative integers. A state transition, called a swap, consists of subtracting 1 from one of the positive integers in the array, and adding 1 to an integer in that array. The sum of all the integers should therefore remain constant; if it varies, that indicates that one or more transitions weren't done correctly. Also, the values in the array should always be nonnegative. The converse is not true: if the sum remains constant and the values remain nonnegative it's still possible that some state transitions were done incorrectly. Still, these tests are reasonable ways to check for errors in the simulation.
+By convention, an acceptor that is successful returns Some (d,s), where d is a rule list that typically contains the acceptor's input rule list as a sublist (because the acceptor may do further parsing, and therefore has applied more rules than before), and s is a tail of the input suffix (again, because the acceptor may have parsed more of the input, and has therefore consumed some of the suffix). This allows the matcher's caller to retrieve the derivation for the matched prefix, along with an indication where the matched prefix ends (since it ends just before the suffix starts). Although this behavior is crucial for the internal acceptors used by your code, it is not required for top-level acceptors supplied by test programs: a top-level acceptor needs only to return a Some x value to succeed.
 
-For an example of a simulation, see jmm.jar, a JAR file containing the simplified source code of a simulation. It contains the following interfaces and classes:
+Whenever there are several rules to try for a nonterminal, you should always try them left-to-right. For example, awkish_grammar below contains this:
 
-State
-The API for a simulation state. The only way to change the state is to invoke swap(i,j), where i and j are indexes into the array. If the ith entry in the array is positive, the swap succeeds, subtracting 1 from the that entry and adding 1 to the jth entry, returning true. If not, the swap does nothing, returning false.
-Nullstate
-An implementation of State that does nothing. Swapping has no effect. This is used for timing the scaffolding of the simulation.
-SynchronizedState
-An implementation of State that uses synchronized so that it is safe but slow.
-SwapTest
-A Runnable class that tests a state implementation by performing a given number of successful swaps on it. It does not count failed swaps.
-UnsafeMemory
-A test harness, with a main method. Invoke it via a shell command like "java UnsafeMemory Synchronized 8 1000000 10 20 30 40 50". Here, Synchronized means to test the SynchronizedState implementation; 8 means to divide the work into 8 threads of roughly equal size; 1000000 means to do a million successful swap transitions total; and the remaining five numbers are the initial values for the five entries in the state array. The shell command outputs a string like "Threads average 3643.32 ns/transition", giving the approximate average number of real-time nanoseconds that it took a thread to do a successful swap, including all the overhead. It also outputs an error diagnostic if a reliability test fails.
+     | Expr ->
+         [[N Term; N Binop; N Expr];
+          [N Term]]
+and therefore, your matcher should attempt to use the rule "Expr → Term Binop Expr" before attempting to use the simpler rule "Expr → Term".
+
+Definitions
+
+symbol, right hand side, rule
+same as in Homework 1.
+alternative list
+A list of right hand sides. It corresponds to all of a grammar's rules for a given nonterminal symbol. By convention, an empty alternative list [] is treated as if it were a singleton list [[]] containing the empty symbol string.
+production function
+A function whose argument is a nonterminal value. It returns a grammar's alternative list for that nonterminal.
+grammar
+A pair, consisting of a start symbol and a production function. The start symbol is a nonterminal value.
+derivation
+a list of rules used to derive a phrase from a nonterminal. For example, the OCaml representation of the example derivation shown above is as follows:
+ [Expr, [N Term; N Binop; N Expr];
+  Term, [N Num];
+  Num, [T "3"];
+  Binop, [T "+"];
+  Expr, [N Term];
+  Term, [N Num];
+  Num, [T "4"]]
+fragment
+a list of terminal symbols, e.g., ["3"; "+"; "4"; "xyzzy"].
+acceptor
+a curried function with two arguments: a derivation d and a fragment frag. If the fragment is not acceptable, it returns None; otherwise it returns Some x for some value x.
+matcher
+a curried function with two arguments: an acceptor accept and a fragment frag. A matcher matches a prefix p of frag such that accept (when passed a derivation and the corresponding suffix) accepts the corresponding suffix (i.e., the suffix of frag that remains after p is removed). If there is such a match, the matcher returns whatever accept returns; otherwise it returns None.
 Assignment
 
-Build and use a JMM-violating performance and reliability testing program, along the lines described below.
+To warm up, notice that the format of grammars is different in this assignment, versus Homework 1. Write a function convert_grammar gram1 that returns a Homework 2-style grammar, which is converted from the Homework 1-style grammar gram1. Test your implementation of convert_grammar on the test grammars given in Homework 1. For example, the top-level definition let awksub_grammar_2 = convert_grammar awksub_grammar should bind awksub_grammar_2 to a Homework 2-style grammar that is equivalent to the Homework 1-style grammar awksub_grammar.
+Write a function parse_prefix gram that returns a matcher for the grammar gram. When applied to an acceptor accept and a fragment frag, the matcher must return the first acceptable match of a prefix of frag, by trying the grammar rules in order; this is not necessarily the shortest nor the longest acceptable match. A match is considered to be acceptable if accept succeeds when given a derivation and the suffix fragment that immediately follows the matching prefix. When this happens, the matcher returns whatever the acceptor returned. If no acceptable match is found, the matcher returns None.
+Write two good test cases for your parse_prefix function. These test cases should all be in the style of the test cases given below, but should cover different problem areas. Your test cases should be named test_1 and test_2 (note the underscores; this distinguishes your test cases from the standard ones given below). Your test cases should test at least one grammar of your own. You may reuse your test cases for Homework 1 as part of test_1, but test_2 should be new.
+Assess your work by writing an after-action report that summarizes why you solved the problem the way you did, other approaches that you considered and rejected (and why you rejected them), and any weaknesses in your solution in the context of its intended application. This report should be a simple ASCII plain text file that consumes a page or so (at most 100 lines and 80 columns per line, please). See Resources for oral presentations and written reports for advice on how to write assessments; admittedly much of the advice there is overkill for the simple kind of report we're looking for here.
+Unlike Homework 1, we are expecting some weaknesses here, so your assessment should talk about them. For example, we don't expect that your implementation will work with all possible grammars, but we would like to know which sort of grammars it will have trouble with.
 
-Your program should operate under Java Standard Edition 7. There is no need to run on older Java versions.
-Your program should compile cleanly, without any warnings.
-Please keep your implementation as simple and short as possible, for the benefit of the reader.
-Use the SEASnet GNU/Linux servers, with Java version 1.7.0_51 or later, to do your performance and reliability measurements. On SEASnet your PATH should be set to a string starting with "/usr/local/cs/bin:".
-Do not use more than 32 threads at a time, to avoid overloading the servers.
-Gather and report statistics about your testing platform, so that others can reproduce your results if they have similar hardware. See the output of java -version, and see the files /proc/cpuinfo and /proc/meminfo.
-Run the test harness on the Null and Synchronized models, using various values for the number of threads, number of swap transitions, size of the state array, and sum of values in the state array, and characterize the performance of the two models. Both models should have 100% reliability, in the sense that they should pass all the tests (even though the Null model does not work); check this.
-Implement a new model Unsynchronized, which is implemented just like Synchronized except that it does not use the keyword synchronized in its implementation.
-Implement a new model GetNSet, which is halfway between unsynchronized and synchronized, in that it does not use synchronized code, but instead uses volatile accesses to array elements. Implement it with the get and set methods of java.util.concurrent.atomic.AtomicIntegerArray.
-Design and implement a new model BetterSafe of your choice, which achieves better performance than Synchronized while retaining 100% reliability.
-Design and implement yet another new model BetterSorry of your choice, which achieves better performance than BetterSafe and better reliability than Unsynchronized, but not necessarily 100% reliability. Try to make BetterSorry at least as good as GetNSet in all important respects, and better than GetNSet in some.
-Integrate all the models into a single program UnsafeMemory, which you should be able to compile with the command javac UnsafeMemory.java and to run using the same shell command as the test harness.
-For each model Synchronized, Unsynchronized, GetNSet, BetterSafe, and BetterSorry, measure and characterize the model's performance and reliability. Discuss any problems you had to overcome to do your measurements properly. Explain whether and why the model is DRF, if it is not DRF give a reliability test (as a shell command "java UnsafeMemory model ...") that the model is extremely likely to fail on the SEASnet GNU/Linux servers.
-Compare the models' reliability and performance to each other. Does any model seem to be the best choice for GDI's applications?
-You may want to look at java.util.concurrent, java.util.concurrent.atomic and java.util.concurrent.locks for implementation ideas.
+As with Homework 1, your code may use the Pervasives and List modules, but it should use no other modules. Your code should be free of side effects. Simplicity is more important than efficiency, but your code should avoid using unnecessary time and space when it is easy to do so.
+
+Submit
+
+We will test your program on the SEASnet Linux servers as before, so make sure that /usr/local/cs/bin is at the start of your path, using the same technique as in Homework 1.
+
+Submit three files via CourseWeb. The file hw2.ml should define parse_prefix along with any auxiliary types and functions needed to define parse_prefix. The file hw2test.ml should contain your test cases. The file hw2.txt should hold your assessment. Please do not put your name, student ID, or other personally identifying information in your files.
+
+Sample test cases
+
+let accept_all derivation string = Some (derivation, string)
+let accept_empty_suffix derivation = function
+   | [] -> Some (derivation, [])
+   | _ -> None
+
+(* An example grammar for a small subset of Awk, derived from but not
+   identical to the grammar in
+   <http://www.cs.ucla.edu/classes/winter06/cs132/hw/hw1.html>.
+   Note that this grammar is not the same as Homework 1; it is
+   instead the same as the grammar under "Theoretical background"
+   above.  *)
+
+type awksub_nonterminals =
+  | Expr | Term | Lvalue | Incrop | Binop | Num
+
+let awkish_grammar =
+  (Expr,
+   function
+     | Expr ->
+         [[N Term; N Binop; N Expr];
+          [N Term]]
+     | Term ->
+	 [[N Num];
+	  [N Lvalue];
+	  [N Incrop; N Lvalue];
+	  [N Lvalue; N Incrop];
+	  [T"("; N Expr; T")"]]
+     | Lvalue ->
+	 [[T"$"; N Expr]]
+     | Incrop ->
+	 [[T"++"];
+	  [T"--"]]
+     | Binop ->
+	 [[T"+"];
+	  [T"-"]]
+     | Num ->
+	 [[T"0"]; [T"1"]; [T"2"]; [T"3"]; [T"4"];
+	  [T"5"]; [T"6"]; [T"7"]; [T"8"]; [T"9"]])
+
+let test0 =
+  ((parse_prefix awkish_grammar accept_all ["ouch"]) = None)
+
+let test1 =
+  ((parse_prefix awkish_grammar accept_all ["9"])
+   = Some ([(Expr, [N Term]); (Term, [N Num]); (Num, [T "9"])], []))
+
+let test2 =
+  ((parse_prefix awkish_grammar accept_all ["9"; "+"; "$"; "1"; "+"])
+   = Some
+       ([(Expr, [N Term; N Binop; N Expr]); (Term, [N Num]); (Num, [T "9"]);
+	 (Binop, [T "+"]); (Expr, [N Term]); (Term, [N Lvalue]);
+	 (Lvalue, [T "$"; N Expr]); (Expr, [N Term]); (Term, [N Num]);
+	 (Num, [T "1"])],
+	["+"]))
+
+let test3 =
+  ((parse_prefix awkish_grammar accept_empty_suffix ["9"; "+"; "$"; "1"; "+"])
+   = None)
+
+(* This one might take a bit longer.... *)
+let test4 =
+ ((parse_prefix awkish_grammar accept_all
+     ["("; "$"; "8"; ")"; "-"; "$"; "++"; "$"; "--"; "$"; "9"; "+";
+      "("; "$"; "++"; "$"; "2"; "+"; "("; "8"; ")"; "-"; "9"; ")";
+      "-"; "("; "$"; "$"; "$"; "$"; "$"; "++"; "$"; "$"; "5"; "++";
+      "++"; "--"; ")"; "-"; "++"; "$"; "$"; "("; "$"; "8"; "++"; ")";
+      "++"; "+"; "0"])
+  = Some
+     ([(Expr, [N Term; N Binop; N Expr]); (Term, [T "("; N Expr; T ")"]);
+       (Expr, [N Term]); (Term, [N Lvalue]); (Lvalue, [T "$"; N Expr]);
+       (Expr, [N Term]); (Term, [N Num]); (Num, [T "8"]); (Binop, [T "-"]);
+       (Expr, [N Term; N Binop; N Expr]); (Term, [N Lvalue]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term; N Binop; N Expr]);
+       (Term, [N Incrop; N Lvalue]); (Incrop, [T "++"]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term; N Binop; N Expr]);
+       (Term, [N Incrop; N Lvalue]); (Incrop, [T "--"]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term; N Binop; N Expr]);
+       (Term, [N Num]); (Num, [T "9"]); (Binop, [T "+"]); (Expr, [N Term]);
+       (Term, [T "("; N Expr; T ")"]); (Expr, [N Term; N Binop; N Expr]);
+       (Term, [N Lvalue]); (Lvalue, [T "$"; N Expr]);
+       (Expr, [N Term; N Binop; N Expr]); (Term, [N Incrop; N Lvalue]);
+       (Incrop, [T "++"]); (Lvalue, [T "$"; N Expr]); (Expr, [N Term]);
+       (Term, [N Num]); (Num, [T "2"]); (Binop, [T "+"]); (Expr, [N Term]);
+       (Term, [T "("; N Expr; T ")"]); (Expr, [N Term]); (Term, [N Num]);
+       (Num, [T "8"]); (Binop, [T "-"]); (Expr, [N Term]); (Term, [N Num]);
+       (Num, [T "9"]); (Binop, [T "-"]); (Expr, [N Term]);
+       (Term, [T "("; N Expr; T ")"]); (Expr, [N Term]); (Term, [N Lvalue]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term]); (Term, [N Lvalue]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term]); (Term, [N Lvalue]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term]); (Term, [N Lvalue; N Incrop]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term]); (Term, [N Lvalue; N Incrop]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term]); (Term, [N Incrop; N Lvalue]);
+       (Incrop, [T "++"]); (Lvalue, [T "$"; N Expr]); (Expr, [N Term]);
+       (Term, [N Lvalue; N Incrop]); (Lvalue, [T "$"; N Expr]); (Expr, [N Term]);
+       (Term, [N Num]); (Num, [T "5"]); (Incrop, [T "++"]); (Incrop, [T "++"]);
+       (Incrop, [T "--"]); (Binop, [T "-"]); (Expr, [N Term]);
+       (Term, [N Incrop; N Lvalue]); (Incrop, [T "++"]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term]); (Term, [N Lvalue; N Incrop]);
+       (Lvalue, [T "$"; N Expr]); (Expr, [N Term]);
+       (Term, [T "("; N Expr; T ")"]); (Expr, [N Term]);
+       (Term, [N Lvalue; N Incrop]); (Lvalue, [T "$"; N Expr]); (Expr, [N Term]);
+       (Term, [N Num]); (Num, [T "8"]); (Incrop, [T "++"]); (Incrop, [T "++"]);
+       (Binop, [T "+"]); (Expr, [N Term]); (Term, [N Num]); (Num, [T "0"])],
+      []))
+
+let rec contains_lvalue = function
+  | [] -> false
+  | (Lvalue,_)::_ -> true
+  | _::rules -> contains_lvalue rules
+
+let accept_only_non_lvalues rules frag =
+  if contains_lvalue rules
+  then None
+  else Some (rules, frag)
+
+let test5 =
+  ((parse_prefix awkish_grammar accept_only_non_lvalues
+      ["3"; "-"; "4"; "+"; "$"; "5"; "-"; "6"])
+   = Some
+      ([(Expr, [N Term; N Binop; N Expr]); (Term, [N Num]); (Num, [T "3"]);
+	(Binop, [T "-"]); (Expr, [N Term]); (Term, [N Num]); (Num, [T "4"])],
+       ["+"; "$"; "5"; "-"; "6"]))
